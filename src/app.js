@@ -7,8 +7,11 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use("/", helloRoutes);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// N'écoute pas quand on est en test
+if (process.env.NODE_ENV !== "test") {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
-export default app; // pour les tests
+export default app; // pour tests
