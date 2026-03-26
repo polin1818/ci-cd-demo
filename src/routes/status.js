@@ -1,13 +1,8 @@
-// src/routes/status.js
 import express from "express";
+import { getStatus } from "../controllers/statusController.js";
 
 const router = express.Router();
 
-router.get("/status", (req, res) => {
-  res.json({
-    status: "OK",
-    time: new Date().toISOString()
-  });
-});
+router.get("/status", getStatus);
 
-export default router; // <- très important
+export default router;

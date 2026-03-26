@@ -1,13 +1,13 @@
 import express from "express";
 import helloRoutes from "./routes/hello.js";
-import statusRoutes from "./routes/status.js"; // <- nouvelle route
+import statusRoutes from "./routes/status.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use("/", helloRoutes);
-app.use("/", statusRoutes); // <- ajout de la route
+app.use("/", statusRoutes);
 
 if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, () => {
