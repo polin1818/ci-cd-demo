@@ -26,8 +26,13 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # 🔥 FIX ICI
       - name: Run tests
         run: npm test
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          NODE_ENV: test
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
