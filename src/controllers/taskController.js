@@ -4,12 +4,14 @@ import { sendTaskEmail } from "../utils/mailer.js";
 
 /**
  * UTILITAIRE : Création de notification
- * Retourne 'true' si la notification a été envoyée immédiatement (SENT)
+ * Gère le statut SENT/PENDING et l'envoi immédiat par mail.
  */
 const createLog = async (userId, type, message, taskId = null, scheduledFor = new Date(), sendEmail = false, userEmail = null, taskTitle = "") => {
   try {
     const now = new Date();
-    const isImmediate = scheduledFor <= now;
+    // 💡 On force la conversion en objet Date pour une comparaison fiable
+    const scheduledDate = new Date(scheduledFor);
+    const isImmediate = scheduledDate <= now;
 
     // 1. Sauvegarde en base de données
     await Notification.create({ 
@@ -17,18 +19,18 @@ const createLog = async (userId, type, message, taskId = null, scheduledFor = ne
       type, 
       message, 
       taskId, 
-      scheduledFor, 
+      scheduledFor: scheduledDate, 
       sendEmail,
       sentStatus: isImmediate ? "SENT" : "PENDING" 
     });
 
-    // 2. Envoi immédiat par mail si les conditions sont réunies
+    // 2. Envoi immédiat par mail si c'est pour "Maintenant"
     if (sendEmail && isImmediate && userEmail) {
       await sendTaskEmail(userEmail, type, taskTitle, message);
     }
 
-    console.log(`🔔 Log [${type}] créé - Statut: ${isImmediate ? 'SENT' : 'PENDING'}`);
-    return isImmediate; // Indique au contrôleur si l'action vient d'avoir lieu
+    console.log(`🔔 Log [${type}] - Statut: ${isImmediate ? 'SENT' : 'PENDING'} | Prévu le: ${scheduledDate.toLocaleString('fr-FR')}`);
+    return isImmediate; 
   } catch (error) {
     console.error("❌ Erreur utilitaire createLog :", error.message);
     return false;
@@ -64,12 +66,12 @@ export const getTasks = async (req, res) => {
   }
 };
 
-// 2. Créer une tâche + Programmation Auto (AVEC LOGIQUE EN COURS)
+// 2. Créer une tâche + Programmation Automatique
 export const createTask = async (req, res) => {
   try {
     const { title, startDate, endDate } = req.body;
     
-    // Création de la tâche (le middleware pre-save du modèle valide les dates)
+    // Création de la tâche
     let task = new Task({ ...req.body, user: req.user.id });
     let savedTask = await task.save();
 
@@ -79,9 +81,10 @@ export const createTask = async (req, res) => {
     await createLog(req.user.id, "TASK_CREATED", `Mission "${title}" enregistrée.`, savedTask._id, new Date(), true, emailToUse, title);
 
     // B. Programmation du rappel de DÉBUT (5 minutes avant)
-    const startReminder = new Date(new Date(startDate).getTime() - 5 * 60000); 
+    // 💡 Calcul précis en millisecondes
+    const startReminderTime = new Date(startDate).getTime() - (5 * 60000);
+    const startReminder = new Date(startReminderTime); 
     
-    // 🔥 Si le rappel de début est immédiat, on passe la tâche "en cours"
     const isStartingNow = await createLog(
       req.user.id, 
       "TASK_STARTING", 
@@ -93,16 +96,17 @@ export const createTask = async (req, res) => {
       title
     );
 
+    // 🔥 Si l'heure de début (moins 5 min) est déjà passée, on active la tâche
     if (isStartingNow) {
       savedTask = await Task.findByIdAndUpdate(
         savedTask._id, 
         { status: "en cours" }, 
         { new: true }
       );
-      console.log("🚀 [Auto-Start] La tâche est passée 'en cours' car l'heure de début est atteinte.");
+      console.log(`🚀 [Auto-Start] "${title}" est passée 'en cours'.`);
     }
 
-    // C. Programmation du rappel de FIN
+    // C. Programmation du rappel de FIN (à l'heure exacte de endDate)
     await createLog(req.user.id, "TASK_ENDING", `Alerte : Fin de mission imminente pour "${title}".`, savedTask._id, new Date(endDate), true, emailToUse, title);
 
     res.status(201).json(savedTask);
@@ -125,10 +129,10 @@ export const updateTask = async (req, res) => {
 
     await createLog(req.user.id, "TASK_UPDATED", `Modification de la mission "${task.title}".`, task._id);
 
-    // Nettoyage si terminé
+    // 🧹 Nettoyage : Si la tâche est finie, on supprime les rappels inutiles
     if (task.status === 'terminé') {
         await Notification.deleteMany({ taskId: task._id, sentStatus: "PENDING" });
-        console.log("🧹 Rappels futurs supprimés.");
+        console.log(`🧹 Rappels futurs annulés pour : ${task.title}`);
     }
 
     res.json(task);
@@ -143,13 +147,15 @@ export const deleteTask = async (req, res) => {
     const task = await Task.findOneAndDelete({ _id: req.params.id, user: req.user.id });
     if (!task) return res.status(404).json({ error: "Tâche non trouvée" });
 
+    // On supprime aussi toutes les notifications liées
     await Notification.deleteMany({ taskId: req.params.id });
-    res.json({ message: "Tâche et notifications supprimées" });
+    res.json({ message: "Tâche et notifications supprimées avec succès" });
   } catch (error) {
     res.status(500).json({ error: "Erreur serveur" });
   }
 };
 
+// 5. Récupérer une tâche spécifique
 export const getTaskById = async (req, res) => {
   try {
     const task = await Task.findOne({ _id: req.params.id, user: req.user.id });
@@ -160,10 +166,14 @@ export const getTaskById = async (req, res) => {
   }
 };
 
+// 6. Route Status (Pour vérifier le serveur au Cameroun)
 export const getStatus = (req, res) => {
+  const now = new Date();
   res.json({ 
     status: "OK", 
-    system_time: new Date().toISOString(),
+    system_time_utc: now.toISOString(),
+    system_time_cameroun: now.toLocaleString('fr-FR', { timeZone: 'Africa/Lagos' }),
+    timezone_env: process.env.TZ,
     user: "Laurence"
   });
 };

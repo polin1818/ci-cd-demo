@@ -1,8 +1,12 @@
+// 🔥 CONFIGURATION DU FUSEAU HORAIRE (UTC+1 pour le Cameroun)
+// Doit être la TOUTE PREMIÈRE ligne avant tout import ou logique
+process.env.TZ = 'Africa/Lagos'; 
+
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors"; 
 import connectDB from "./config/db.js";
-import startMailWorker from "./workers/mailWorker.js"; // 👈 Import de l'automate
+import startMailWorker from "./workers/mailWorker.js";
 
 // Importations des routes
 import helloRoutes from "./routes/hello.js";
@@ -25,6 +29,7 @@ app.use(express.json());
 if (process.env.NODE_ENV !== "test") {
   connectDB().then(() => {
     console.log("📦 Base de données synchronisée");
+    console.log("🕒 Heure locale système :", new Date().toLocaleString('fr-FR'));
 
     // 🚀 ACTIVATION DE L'AUTOMATE DE MAILS
     // Il va scanner les notifications PENDING chaque minute
@@ -52,6 +57,7 @@ if (process.env.NODE_ENV !== "test") {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📡 API Profil activée sur /api/users`);
     console.log(`📧 Système de notifications par mail : ACTIF`);
+    console.log(`🌍 Zone géographique : Afrique Centrale (Douala/Lagos)`);
   });
 }
 
