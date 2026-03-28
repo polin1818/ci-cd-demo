@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors"; 
 import connectDB from "./config/db.js";
+import startMailWorker from "./workers/mailWorker.js"; // 👈 Import de l'automate
 
 // Importations des routes
 import helloRoutes from "./routes/hello.js";
@@ -9,7 +10,7 @@ import statusRoutes from "./routes/status.js";
 import taskRoutes from "./routes/tasks.js";
 import authRoutes from "./routes/auth.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
-import userRoutes from "./routes/userRoutes.js"; // 👈 Nouvelle route ajoutée
+import userRoutes from "./routes/userRoutes.js";
 
 dotenv.config();
 
@@ -17,16 +18,18 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // --- 🛑 MIDDLEWARES DE SÉCURITÉ ET CONFIGURATION ---
-
-// Activation du CORS (Indispensable pour Render + Localhost)
 app.use(cors()); 
-
-// Lecture du JSON (Indispensable pour req.body)
 app.use(express.json());
 
-// 🔥 Connexion DB seulement hors tests
+// 🔥 Connexion DB et Lancement des services
 if (process.env.NODE_ENV !== "test") {
-  connectDB();
+  connectDB().then(() => {
+    console.log("📦 Base de données synchronisée");
+
+    // 🚀 ACTIVATION DE L'AUTOMATE DE MAILS
+    // Il va scanner les notifications PENDING chaque minute
+    startMailWorker(); 
+  });
 }
 
 // --- 🛣️ ROUTES ---
@@ -37,7 +40,7 @@ app.use("/", statusRoutes);
 app.use("/api/auth", authRoutes);
 
 // 2️⃣ Routes utilisateur (Profil, mot de passe)
-app.use("/api/users", userRoutes); // 👈 Branchement du profil
+app.use("/api/users", userRoutes); 
 
 // 3️⃣ Routes métier (Tâches et Notifications)
 app.use("/", taskRoutes);
@@ -48,6 +51,7 @@ if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📡 API Profil activée sur /api/users`);
+    console.log(`📧 Système de notifications par mail : ACTIF`);
   });
 }
 

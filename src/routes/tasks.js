@@ -4,20 +4,25 @@ import {
   getTaskById,
   createTask,
   updateTask,
-  deleteTask
+  deleteTask,
+  getStatus // Optionnel : pour vérifier la santé de l'API
 } from "../controllers/taskController.js";
-import { verifyToken } from "../middleware/auth.js"; // 🔐 Importe ton bouclier
+import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
-// Option A : Appliquer la protection à TOUTES les routes de ce fichier d'un coup
+// --- PROTECTION GLOBALE ---
+// Toutes les routes définies après cette ligne nécessitent un token valide 🔐
 router.use(verifyToken); 
 
-// On garde /tasks ici car dans app.js tu as mis app.use("/", taskRoutes)
-router.get("/tasks", getTasks);
-router.get("/tasks/:id", getTaskById);
-router.post("/tasks", createTask);
-router.put("/tasks/:id", updateTask);
-router.delete("/tasks/:id", deleteTask);
+// --- ROUTES STANDARDS (CRUD) ---
+router.get("/tasks", getTasks);           // Récupère les missions (avec filtres temps/priorité)
+router.get("/tasks/:id", getTaskById);    // Détails d'une mission spécifique
+router.post("/tasks", createTask);         // Création avec programmation auto des alertes
+router.put("/tasks/:id", updateTask);      // Mise à jour (recalcule les notifications si les dates changent)
+router.delete("/tasks/:id", deleteTask);   // Suppression + Nettoyage des alertes liées
+
+// --- ROUTE DE SANTÉ SYSTÈME ---
+router.get("/status", getStatus);
 
 export default router;

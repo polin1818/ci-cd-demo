@@ -6,9 +6,18 @@ const notificationSchema = new mongoose.Schema({
     ref: "User",
     required: true
   },
+  // --- TYPE D'ALERTE ---
   type: {
     type: String,
-    enum: ["TASK_CREATED", "TASK_UPDATED", "TASK_DELETED", "SYSTEM"],
+    enum: [
+      "TASK_STARTING", // Rappel quand la tâche commence
+      "TASK_ENDING",   // Rappel quand la tâche approche de la fin
+      "TASK_OVERDUE",  // Alerte si la tâche est en retard (échouée)
+      "TASK_CREATED", 
+      "TASK_UPDATED", 
+      "TASK_DELETED", 
+      "SYSTEM"
+    ],
     required: true
   },
   message: {
@@ -19,7 +28,22 @@ const notificationSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Task"
   },
+  // --- GESTION DE L'ENVOI ---
   read: {
+    type: Boolean,
+    default: false
+  },
+  scheduledFor: {
+    type: Date,
+    default: Date.now // Par défaut immédiat, mais peut être programmé dans le futur
+  },
+  sentStatus: {
+    type: String,
+    enum: ["PENDING", "SENT", "FAILED"],
+    default: "SENT" // Les notifications classiques sont SENT immédiatement
+  },
+  // Pour savoir si on doit aussi envoyer un email
+  sendEmail: {
     type: Boolean,
     default: false
   }
@@ -27,7 +51,8 @@ const notificationSchema = new mongoose.Schema({
   timestamps: true 
 });
 
-// Index pour récupérer rapidement les notifications non lues d'un utilisateur
+// Indexation pour la performance
 notificationSchema.index({ user: 1, read: 1 });
+notificationSchema.index({ scheduledFor: 1, sentStatus: 1 }); // Crucial pour ton futur script d'envoi automatique
 
 export default mongoose.model("Notification", notificationSchema);
