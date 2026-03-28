@@ -5,9 +5,9 @@ console.log(`📧 [MAILER] EMAIL_PASS : ${process.env.EMAIL_PASS ? '✅ (défini
 
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  family: 4,
+  port: 465, // 🔥 IMPORTANT
+  secure: true, // 🔥 true pour 465
+  family: 4, // ✅ force IPv4 (corrige ton erreur)
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
