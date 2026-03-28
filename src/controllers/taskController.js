@@ -1,19 +1,14 @@
 import Task from "../models/Task.js";
 import Notification from "../models/Notification.js";
+import User from "../models/User.js";
 import { sendTaskEmail } from "../utils/mailer.js";
 
-/**
- * UTILITAIRE : Création de notification
- * Gère le statut SENT/PENDING et l'envoi immédiat par mail.
- */
 const createLog = async (userId, type, message, taskId = null, scheduledFor = new Date(), sendEmail = false, userEmail = null, taskTitle = "") => {
   try {
     const now = new Date();
-    // 💡 On force la conversion en objet Date pour une comparaison fiable
     const scheduledDate = new Date(scheduledFor);
     const isImmediate = scheduledDate <= now;
 
-    // 1. Sauvegarde en base de données
     await Notification.create({ 
       user: userId, 
       type, 
@@ -24,9 +19,9 @@ const createLog = async (userId, type, message, taskId = null, scheduledFor = ne
       sentStatus: isImmediate ? "SENT" : "PENDING" 
     });
 
-    // 2. Envoi immédiat par mail si c'est pour "Maintenant"
     if (sendEmail && isImmediate && userEmail) {
-      await sendTaskEmail(userEmail, type, taskTitle, message);
+      const sent = await sendTaskEmail(userEmail, type, taskTitle, message);
+      if (!sent) console.warn(`⚠️ [createLog] Email non envoyé pour [${type}] à ${userEmail}`);
     }
 
     console.log(`🔔 Log [${type}] - Statut: ${isImmediate ? 'SENT' : 'PENDING'} | Prévu le: ${scheduledDate.toLocaleString('fr-FR')}`);
@@ -37,7 +32,6 @@ const createLog = async (userId, type, message, taskId = null, scheduledFor = ne
   }
 };
 
-// 1. Récupérer les tâches (Filtres + Pagination)
 export const getTasks = async (req, res) => {
   try {
     const { page = 1, limit = 10, status, priority, search } = req.query;
@@ -49,7 +43,7 @@ export const getTasks = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const tasks = await Task.find(query)
-      .sort({ startDate: 1 }) 
+      .sort({ startDate: 1 })
       .skip(skip)
       .limit(parseInt(limit));
 
@@ -66,47 +60,35 @@ export const getTasks = async (req, res) => {
   }
 };
 
-// 2. Créer une tâche + Programmation Automatique
 export const createTask = async (req, res) => {
   try {
     const { title, startDate, endDate } = req.body;
-    
-    // Création de la tâche
+
+    // ✅ Récupération de l'email depuis la DB (le token ne le contient pas)
+    const userDoc = await User.findById(req.user.id).select("email");
+    if (!userDoc?.email) return res.status(400).json({ error: "Email utilisateur introuvable" });
+    const emailToUse = userDoc.email;
+
     let task = new Task({ ...req.body, user: req.user.id });
     let savedTask = await task.save();
 
-    const emailToUse = req.user.email || "lorenzongoulefack01@gmail.com";
-
-    // A. Notification de création immédiate
+    // A. Notification immédiate de création
     await createLog(req.user.id, "TASK_CREATED", `Mission "${title}" enregistrée.`, savedTask._id, new Date(), true, emailToUse, title);
 
-    // B. Programmation du rappel de DÉBUT (5 minutes avant)
-    // 💡 Calcul précis en millisecondes
-    const startReminderTime = new Date(startDate).getTime() - (5 * 60000);
-    const startReminder = new Date(startReminderTime); 
-    
+    // B. Rappel de début (5 min avant startDate)
+    const startReminder = new Date(new Date(startDate).getTime() - 5 * 60000);
     const isStartingNow = await createLog(
-      req.user.id, 
-      "TASK_STARTING", 
-      `Alerte : Votre mission "${title}" est lancée !`, 
-      savedTask._id, 
-      startReminder, 
-      true, 
-      emailToUse, 
-      title
+      req.user.id, "TASK_STARTING",
+      `Alerte : Votre mission "${title}" est lancée !`,
+      savedTask._id, startReminder, true, emailToUse, title
     );
 
-    // 🔥 Si l'heure de début (moins 5 min) est déjà passée, on active la tâche
     if (isStartingNow) {
-      savedTask = await Task.findByIdAndUpdate(
-        savedTask._id, 
-        { status: "en cours" }, 
-        { new: true }
-      );
+      savedTask = await Task.findByIdAndUpdate(savedTask._id, { status: "en cours" }, { new: true });
       console.log(`🚀 [Auto-Start] "${title}" est passée 'en cours'.`);
     }
 
-    // C. Programmation du rappel de FIN (à l'heure exacte de endDate)
+    // C. Rappel de fin (à l'heure exacte de endDate)
     await createLog(req.user.id, "TASK_ENDING", `Alerte : Fin de mission imminente pour "${title}".`, savedTask._id, new Date(endDate), true, emailToUse, title);
 
     res.status(201).json(savedTask);
@@ -116,7 +98,6 @@ export const createTask = async (req, res) => {
   }
 };
 
-// 3. Mettre à jour + Recalcul des Notifications
 export const updateTask = async (req, res) => {
   try {
     const task = await Task.findOneAndUpdate(
@@ -129,10 +110,9 @@ export const updateTask = async (req, res) => {
 
     await createLog(req.user.id, "TASK_UPDATED", `Modification de la mission "${task.title}".`, task._id);
 
-    // 🧹 Nettoyage : Si la tâche est finie, on supprime les rappels inutiles
     if (task.status === 'terminé') {
-        await Notification.deleteMany({ taskId: task._id, sentStatus: "PENDING" });
-        console.log(`🧹 Rappels futurs annulés pour : ${task.title}`);
+      await Notification.deleteMany({ taskId: task._id, sentStatus: "PENDING" });
+      console.log(`🧹 Rappels futurs annulés pour : ${task.title}`);
     }
 
     res.json(task);
@@ -141,13 +121,11 @@ export const updateTask = async (req, res) => {
   }
 };
 
-// 4. Supprimer
 export const deleteTask = async (req, res) => {
   try {
     const task = await Task.findOneAndDelete({ _id: req.params.id, user: req.user.id });
     if (!task) return res.status(404).json({ error: "Tâche non trouvée" });
 
-    // On supprime aussi toutes les notifications liées
     await Notification.deleteMany({ taskId: req.params.id });
     res.json({ message: "Tâche et notifications supprimées avec succès" });
   } catch (error) {
@@ -155,7 +133,6 @@ export const deleteTask = async (req, res) => {
   }
 };
 
-// 5. Récupérer une tâche spécifique
 export const getTaskById = async (req, res) => {
   try {
     const task = await Task.findOne({ _id: req.params.id, user: req.user.id });
@@ -166,7 +143,6 @@ export const getTaskById = async (req, res) => {
   }
 };
 
-// 6. Route Status (Pour vérifier le serveur au Cameroun)
 export const getStatus = (req, res) => {
   const now = new Date();
   res.json({ 

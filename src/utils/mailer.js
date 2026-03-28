@@ -1,13 +1,13 @@
 import nodemailer from 'nodemailer';
-import dotenv from 'dotenv';
 
-dotenv.config();
+console.log(`📧 [MAILER] EMAIL_USER : ${process.env.EMAIL_USER ? '✅ ' + process.env.EMAIL_USER : '❌ MANQUANT'}`);
+console.log(`📧 [MAILER] EMAIL_PASS : ${process.env.EMAIL_PASS ? '✅ (défini)' : '❌ MANQUANT'}`);
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   host: 'smtp.gmail.com',
   port: 465,
-  secure: true, 
+  secure: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
@@ -17,7 +17,7 @@ const transporter = nodemailer.createTransport({
 export const sendTaskEmail = async (to, type, taskTitle, message) => {
   try {
     const isStarting = type === "TASK_STARTING";
-    const accentColor = isStarting ? "#10B981" : "#4F46E5"; // Vert émeraude ou Indigo moderne
+    const accentColor = isStarting ? "#10B981" : "#4F46E5";
 
     const mailOptions = {
       from: `"Task Manager" <${process.env.EMAIL_USER}>`,
@@ -64,10 +64,12 @@ export const sendTaskEmail = async (to, type, taskTitle, message) => {
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Email [${type}] envoyé (Style Pro) à ${to}`);
+    console.log(`✅ [MAILER] Email [${type}] envoyé à ${to} — MessageId: ${info.messageId}`);
     return true;
+
   } catch (error) {
-    console.error("❌ Erreur lors de l'envoi de l'email :", error.message);
+    console.error(`❌ [MAILER] Échec envoi à ${to} :`, error.message);
+    console.error(`❌ [MAILER] Détail complet :`, error);
     return false;
   }
 };
