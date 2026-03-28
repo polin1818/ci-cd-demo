@@ -4,13 +4,13 @@ console.log(`📧 [MAILER] EMAIL_USER : ${process.env.EMAIL_USER ? '✅ ' + proc
 console.log(`📧 [MAILER] EMAIL_PASS : ${process.env.EMAIL_PASS ? '✅ (défini)' : '❌ MANQUANT'}`);
 
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465, // 🔥 IMPORTANT
-  secure: true, // 🔥 true pour 465
-  family: 4, // ✅ force IPv4 (corrige ton erreur)
+  service: 'gmail', // ✅ MEILLEUR CHOIX
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false, // ✅ évite certains bugs cloud
   },
 });
 
